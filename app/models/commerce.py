@@ -15,12 +15,14 @@ from app.db.base import Base
 
 class OrderStatus(str, Enum):
     PENDING = "pending"
-    PAID = "paid"
     PROCESSING = "processing"
     SHIPPED = "shipped"
+    OUT_FOR_DELIVERY = "out_for_delivery"
     DELIVERED = "delivered"
+    DELAYED = "delayed"
+    FAILED_DELIVERY = "failed_delivery"
+    RETURNED = "returned"
     CANCELLED = "cancelled"
-    REFUNDED = "refunded"
 
 
 class Customer(Base):
@@ -45,6 +47,7 @@ class Product(Base):
     category: Mapped[str] = mapped_column(String(100), index=True)
     description: Mapped[str] = mapped_column(Text)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    cost_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -97,9 +100,16 @@ class Order(Base):
     shipping_fee: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
     total: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    fulfillment_warehouse_id: Mapped[Optional[int]] = mapped_column(ForeignKey("warehouses.id"), nullable=True)
 
     customer: Mapped[Customer] = relationship(back_populates="orders")
     items: Mapped[list[OrderItem]] = relationship(back_populates="order", cascade="all, delete-orphan")
+    fulfillment_warehouse: Mapped[Optional[Warehouse]] = relationship()
+    status_events: Mapped[list[OrderStatusEvent]] = relationship(
+        back_populates="order", order_by="OrderStatusEvent.occurred_at"
+    )
+    shipment: Mapped[Optional[Shipment]] = relationship(back_populates="order", uselist=False)
+    return_request: Mapped[Optional[Return]] = relationship(back_populates="order", uselist=False)
 
 
 class OrderItem(Base):
@@ -116,3 +126,68 @@ class OrderItem(Base):
 
     order: Mapped[Order] = relationship(back_populates="items")
     product: Mapped[Product] = relationship(back_populates="order_items")
+
+
+class OrderStatusEvent(Base):
+    __tablename__ = "order_status_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False, index=True)
+    status: Mapped[OrderStatus] = mapped_column(SqlEnum(OrderStatus, name="order_status"), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    order: Mapped[Order] = relationship(back_populates="status_events")
+
+
+class ShipmentStatus(str, Enum):
+    LABEL_CREATED = "label_created"
+    IN_TRANSIT = "in_transit"
+    OUT_FOR_DELIVERY = "out_for_delivery"
+    DELIVERED = "delivered"
+    DELAYED = "delayed"
+    FAILED_DELIVERY = "failed_delivery"
+
+
+class Shipment(Base):
+    __tablename__ = "shipments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False, unique=True, index=True)
+    carrier: Mapped[str] = mapped_column(String(50), nullable=False)
+    tracking_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    status: Mapped[ShipmentStatus] = mapped_column(SqlEnum(ShipmentStatus, name="shipment_status"), nullable=False)
+    shipped_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    estimated_delivery_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    order: Mapped[Order] = relationship(back_populates="shipment")
+
+
+class ReturnStatus(str, Enum):
+    REQUESTED = "requested"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    REFUNDED = "refunded"
+
+
+class ReturnReason(str, Enum):
+    WRONG_SIZE = "wrong_size"
+    DAMAGED = "damaged"
+    NOT_AS_DESCRIBED = "not_as_described"
+    CHANGED_MIND = "changed_mind"
+    QUALITY_ISSUE = "quality_issue"
+
+
+class Return(Base):
+    __tablename__ = "returns"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False, unique=True, index=True)
+    reason: Mapped[ReturnReason] = mapped_column(SqlEnum(ReturnReason, name="return_reason"), nullable=False)
+    status: Mapped[ReturnStatus] = mapped_column(SqlEnum(ReturnStatus, name="return_status"), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    refund_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+
+    order: Mapped[Order] = relationship(back_populates="return_request")

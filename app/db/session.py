@@ -1,6 +1,8 @@
+from collections.abc import Generator
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 
 class Settings(BaseSettings):
@@ -12,3 +14,13 @@ class Settings(BaseSettings):
 settings = Settings()
 engine = create_engine(settings.database_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+
+def get_db() -> Generator[Session, None, None]:
+    """Provide one database session per HTTP request."""
+    db = SessionLocal()
+
+    try:
+        yield db
+    finally:
+        db.close()
