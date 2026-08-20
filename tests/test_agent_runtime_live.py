@@ -20,12 +20,15 @@ def test_agent_answers_a_real_order_question() -> None:
         assert existing is not None, "seed data required: run scripts.generate_data first"
 
         question = f"What is the status of order {existing.order_number}? Who is the customer and what items did they order?    "
-        answer = run_agent_turn(question, db)
+        result = run_agent_turn(question, db)
 
         print(f"\nyou> {question}")
-        print(f"agent> {answer}")
+        for call in result.tool_calls:
+            print(f"  [tool call] {call.name}({call.arguments})")
+        print(f"agent> {result.text}")
 
-        assert isinstance(answer, str)
-        assert len(answer) > 0
+        assert isinstance(result.text, str)
+        assert len(result.text) > 0
+        assert len(result.tool_calls) > 0, "expected the model to call at least one tool"
     finally:
         db.close()

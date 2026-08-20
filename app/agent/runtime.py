@@ -11,6 +11,7 @@ request/response format.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
@@ -32,26 +33,53 @@ SYSTEM_PROMPT = (
 MAX_TOOL_ITERATIONS = 5
 
 
-def run_agent_turn(user_message: str, db: Session) -> str:
+@dataclass
+class ToolCallRecord:
+    """One executed tool call, kept for inspection/testing — not sent back
+    to the model (that's what ToolResult is for)."""
+
+    name: str
+    arguments: dict
+    result: str
+    is_error: bool
+
+
+@dataclass
+class AgentTurnResult:
+    text: str
+    tool_calls: list[ToolCallRecord] = field(default_factory=list)
+
+
+def run_agent_turn(user_message: str, db: Session) -> AgentTurnResult:
     """Run one user turn to completion, including any tool calls.
 
-    Returns the model's final text reply.
+    Returns the model's final text reply plus a record of every tool call
+    made along the way, in the order they happened.
     """
     provider = get_provider(SYSTEM_PROMPT)
     turn = provider.send_user_message(user_message)
+    call_log: list[ToolCallRecord] = []
 
     for _ in range(MAX_TOOL_ITERATIONS):
         if not turn.tool_calls:
-            return turn.text or ""
+            return AgentTurnResult(text=turn.text or "", tool_calls=call_log)
 
         results = []
         for call in turn.tool_calls:
             logger.info("Model called tool %s with input %r", call.name, call.arguments)
             content, is_error = execute_tool(call.name, call.arguments, db)
+            call_log.append(
+                ToolCallRecord(
+                    name=call.name, arguments=call.arguments, result=content, is_error=is_error
+                )
+            )
             results.append(
                 ToolResult(id=call.id, name=call.name, content=content, is_error=is_error)
             )
 
         turn = provider.send_tool_results(results)
 
-    return "I wasn't able to finish that request after several tool calls. Please try rephrasing."
+    return AgentTurnResult(
+        text="I wasn't able to finish that request after several tool calls. Please try rephrasing.",
+        tool_calls=call_log,
+    )

@@ -39,3 +39,18 @@ class OrderStatusResult(BaseModel):
     items: list[OrderItemOut] = []
     shipment: ShipmentOut | None = None
     return_request: ReturnOut | None = None
+
+
+class OrderSummaryOut(BaseModel):
+    order_number: str
+    status: str
+    total: str
+    created_at: str
+
+
+class CustomerOrdersResult(BaseModel):
+    """Matches the lookup_customer_orders tool contract in docs/tool_contracts.md."""
+
+    found: bool
+    reason: str | None = None
+    orders: list[OrderSummaryOut] = []

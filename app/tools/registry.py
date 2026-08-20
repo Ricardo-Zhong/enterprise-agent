@@ -11,14 +11,20 @@ from collections.abc import Callable
 
 from sqlalchemy.orm import Session
 
-from app.tools.orders import GET_ORDER_STATUS_TOOL, handle_get_order_status
+from app.tools.orders import (
+    GET_ORDER_STATUS_TOOL,
+    LOOKUP_CUSTOMER_ORDERS_TOOL,
+    handle_get_order_status,
+    handle_lookup_customer_orders,
+)
 
 logger = logging.getLogger(__name__)
 
-TOOL_DEFINITIONS = [GET_ORDER_STATUS_TOOL]
+TOOL_DEFINITIONS = [GET_ORDER_STATUS_TOOL, LOOKUP_CUSTOMER_ORDERS_TOOL]
 
 _HANDLERS: dict[str, Callable[[dict, Session], str]] = {
     "get_order_status": handle_get_order_status,
+    "lookup_customer_orders": handle_lookup_customer_orders,
 }
 
 
