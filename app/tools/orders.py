@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.services.orders import get_order_status
+from app.services.orders import get_order_status, lookup_customer_orders
 
 GET_ORDER_STATUS_TOOL = {
     "name": "get_order_status",
@@ -30,4 +30,41 @@ GET_ORDER_STATUS_TOOL = {
 
 def handle_get_order_status(tool_input: dict, db: Session) -> str:
     result = get_order_status(db, tool_input["order_number"])
+    return result.model_dump_json()
+
+
+LOOKUP_CUSTOMER_ORDERS_TOOL = {
+    "name": "lookup_customer_orders",
+    "description": (
+        "List a customer's recent orders (order number, status, total, date) "
+        "by their email address. Use this when the user asks about 'my "
+        "orders' or 'recent orders' without giving a specific order number. "
+        "This returns summaries only — call get_order_status with the "
+        "order_number if the user wants full detail on one of them."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "customer_email": {
+                "type": "string",
+                "description": "Customer's email address.",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Max orders to return, default 5, max 20.",
+                "minimum": 1,
+                "maximum": 20,
+            },
+        },
+        "required": ["customer_email"],
+    },
+}
+
+
+def handle_lookup_customer_orders(tool_input: dict, db: Session) -> str:
+    result = lookup_customer_orders(
+        db,
+        tool_input["customer_email"],
+        limit=tool_input.get("limit", 5),
+    )
     return result.model_dump_json()

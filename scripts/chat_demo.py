@@ -10,8 +10,20 @@ Usage:
 
 import sys
 
-from app.agent.runtime import run_agent_turn
+from app.agent.runtime import AgentTurnResult, run_agent_turn
 from app.db.session import SessionLocal
+
+
+def should_exit(question: str) -> bool:
+    normalized = question.strip().lower()
+    return not normalized or normalized in {"q", "quit", "exit", "bye", "goodbye", "close", "stop", "end", "terminate"}
+
+
+def _print_result(result: AgentTurnResult) -> None:
+    for i, call in enumerate(result.tool_calls, start=1):
+        status = "ERROR" if call.is_error else "ok"
+        print(f"  [tool call {i}] {call.name}({call.arguments}) -> {status}")
+    print(f"agent> {result.text}")
 
 
 def main() -> None:
@@ -19,15 +31,28 @@ def main() -> None:
     try:
         if len(sys.argv) > 1:
             question = " ".join(sys.argv[1:])
+            if should_exit(question):
+                return
             print(f"you> {question}")
-            print(f"agent> {run_agent_turn(question, db)}")
+            _print_result(run_agent_turn(question, db))
             return
 
         while True:
-            question = input("you> ").strip()
-            if not question:
+            try:
+                question = input("you> ").strip()
+            except EOFError:
+                print()
                 break
-            print(f"agent> {run_agent_turn(question, db)}\n")
+            except KeyboardInterrupt:
+                print("\nExiting...")
+                break
+
+            if should_exit(question):
+                print("Bye!")
+                break
+
+            _print_result(run_agent_turn(question, db))
+            print()
     finally:
         db.close()
 

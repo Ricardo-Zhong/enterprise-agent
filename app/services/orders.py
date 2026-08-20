@@ -5,8 +5,15 @@ from __future__ import annotations
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.commerce import Order
-from app.schemas.orders import OrderItemOut, OrderStatusResult, ReturnOut, ShipmentOut
+from app.models.commerce import Customer, Order
+from app.schemas.orders import (
+    CustomerOrdersResult,
+    OrderItemOut,
+    OrderStatusResult,
+    OrderSummaryOut,
+    ReturnOut,
+    ShipmentOut,
+)
 
 
 def get_order_status(db: Session, order_number: str) -> OrderStatusResult:
@@ -68,4 +75,39 @@ def get_order_status(db: Session, order_number: str) -> OrderStatusResult:
         ],
         shipment=shipment,
         return_request=return_request,
+    )
+
+
+def lookup_customer_orders(db: Session, customer_email: str, limit: int = 5) -> CustomerOrdersResult:
+    """List a customer's most recent orders (summaries only) by email."""
+    limit = max(1, min(limit, 20))
+
+    customer = (
+        db.query(Customer)
+        .filter(func.lower(Customer.email) == customer_email.strip().lower())
+        .first()
+    )
+
+    if customer is None:
+        return CustomerOrdersResult(found=False, reason="no_such_customer")
+
+    orders = (
+        db.query(Order)
+        .filter(Order.customer_id == customer.id)
+        .order_by(Order.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    return CustomerOrdersResult(
+        found=True,
+        orders=[
+            OrderSummaryOut(
+                order_number=order.order_number,
+                status=order.status.value,
+                total=str(order.total),
+                created_at=order.created_at.isoformat(),
+            )
+            for order in orders
+        ],
     )
